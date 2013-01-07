@@ -1,21 +1,18 @@
 package net.sf.openrocket.file.openrocket;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.zip.GZIPOutputStream;
 
 import net.sf.openrocket.aerodynamics.Warning;
 import net.sf.openrocket.document.OpenRocketDocument;
 import net.sf.openrocket.document.Simulation;
 import net.sf.openrocket.document.StorageOptions;
 import net.sf.openrocket.file.RocketSaver;
+import net.sf.openrocket.file.ZipContainer;
 import net.sf.openrocket.logging.LogHelper;
 import net.sf.openrocket.rocketcomponent.FinSet;
 import net.sf.openrocket.rocketcomponent.MotorMount;
@@ -57,40 +54,29 @@ public class OpenRocketSaver extends RocketSaver {
 	
 	// Estimated storage used by different portions
 	// These have been hand-estimated from saved files
-	private static final int BYTES_PER_COMPONENT_UNCOMPRESSED = 590;
 	private static final int BYTES_PER_COMPONENT_COMPRESSED = 80;
-	private static final int BYTES_PER_SIMULATION_UNCOMPRESSED = 1000;
 	private static final int BYTES_PER_SIMULATION_COMPRESSED = 100;
-	private static final int BYTES_PER_DATAPOINT_UNCOMPRESSED = 350;
 	private static final int BYTES_PER_DATAPOINT_COMPRESSED = 100;
 	
 	
 	private int indent;
-	private Writer dest;
+	private ZipContainer container;
 	
 	@Override
 	public void save(OutputStream output, OpenRocketDocument document, StorageOptions options)
 			throws IOException {
+
+		container = new ZipContainer(output);
 		
-		log.info("Saving .ork file");
-		
-		if (options.isCompressionEnabled()) {
-			log.debug("Enabling compression");
-			output = new GZIPOutputStream(output);
-		}
-		
-		dest = new BufferedWriter(new OutputStreamWriter(output, OPENROCKET_CHARSET));
-		
+		this.indent = 0;
+
 		// Select file version number
 		final int fileVersion = calculateNecessaryFileVersion(document, options);
 		final String fileVersionString =
 				(fileVersion / FILE_VERSION_DIVISOR) + "." + (fileVersion % FILE_VERSION_DIVISOR);
+		
 		log.debug("Storing file version " + fileVersionString);
-		
-		
-		this.indent = 0;
-		
-		
+				
 		writeln("<?xml version='1.0' encoding='utf-8'?>");
 		writeln("<openrocket version=\"" + fileVersionString + "\" creator=\"OpenRocket "
 				+ BuildProperties.getVersion() + "\">");
@@ -101,7 +87,7 @@ public class OpenRocketSaver extends RocketSaver {
 		
 		writeln("");
 		
-		// Save custom expressions;
+		// Save custom datatypes;
 		saveCustomDatatypes(document);
 		
 		// Save all simulations
@@ -120,11 +106,7 @@ public class OpenRocketSaver extends RocketSaver {
 		indent--;
 		writeln("</openrocket>");
 		
-		log.debug("Writing complete, flushing buffers");
-		dest.flush();
-		if (options.isCompressionEnabled()) {
-			((GZIPOutputStream) output).finish();
-		}
+		container.save();
 	}
 	
 	/*
@@ -177,18 +159,11 @@ public class OpenRocketSaver extends RocketSaver {
 			componentCount++;
 		}
 		
-		if (options.isCompressionEnabled())
-			size += componentCount * BYTES_PER_COMPONENT_COMPRESSED;
-		else
-			size += componentCount * BYTES_PER_COMPONENT_UNCOMPRESSED;
 		
+		size += componentCount * BYTES_PER_COMPONENT_COMPRESSED;
 		
 		// Size per simulation
-		if (options.isCompressionEnabled())
-			size += doc.getSimulationCount() * BYTES_PER_SIMULATION_COMPRESSED;
-		else
-			size += doc.getSimulationCount() * BYTES_PER_SIMULATION_UNCOMPRESSED;
-		
+		size += doc.getSimulationCount() * BYTES_PER_SIMULATION_COMPRESSED;
 		
 		// Size per flight data point
 		int pointCount = 0;
@@ -204,10 +179,7 @@ public class OpenRocketSaver extends RocketSaver {
 			}
 		}
 		
-		if (options.isCompressionEnabled())
-			size += pointCount * BYTES_PER_DATAPOINT_COMPRESSED;
-		else
-			size += pointCount * BYTES_PER_DATAPOINT_UNCOMPRESSED;
+		size += pointCount * BYTES_PER_DATAPOINT_COMPRESSED;
 		
 		return size;
 	}
@@ -443,7 +415,7 @@ public class OpenRocketSaver extends RocketSaver {
 			if (timeSkip != StorageOptions.SIMULATION_DATA_NONE) {
 				for (int i = 0; i < data.getBranchCount(); i++) {
 					FlightDataBranch branch = data.getBranch(i);
-					saveFlightDataBranch(branch, timeSkip);
+					saveFlightDataBranch(branch, simulation, timeSkip);
 				}
 			}
 			
@@ -458,7 +430,7 @@ public class OpenRocketSaver extends RocketSaver {
 	
 	
 	
-	private void saveFlightDataBranch(FlightDataBranch branch, double timeSkip)
+	private void saveFlightDataBranch(FlightDataBranch branch, Simulation simulation, double timeSkip)
 			throws IOException {
 		double previousTime = -100000;
 		
@@ -483,22 +455,6 @@ public class OpenRocketSaver extends RocketSaver {
 		sb.append("<databranch name=\"");
 		sb.append(escapeXML(branch.getBranchName()));
 		
-		// Kevins version where typekeys are used
-		/*
-		sb.append("\" typekeys=\"");
-		for (int i = 0; i < types.length; i++) {
-			if (i > 0)
-				sb.append(",");
-			sb.append(escapeXML(types[i].getKey()));
-		}
-		*/
-		
-		sb.append("\" types=\"");
-		for (int i = 0; i < types.length; i++) {
-			if (i > 0)
-				sb.append(",");
-			sb.append(escapeXML(types[i].getName()));
-		}
 		sb.append("\">");
 		writeln(sb.toString());
 		indent++;
@@ -509,27 +465,62 @@ public class OpenRocketSaver extends RocketSaver {
 					+ "\" type=\"" + enumToXMLName(event.getType()) + "\"/>");
 		}
 		
-		// Write the data
-		int length = branch.getLength();
-		if (length > 0) {
-			writeDataPointString(data, 0, sb);
-			previousTime = timeData.get(0);
-		}
-		
-		for (int i = 1; i < length - 1; i++) {
-			if (timeData != null) {
-				if (Math.abs(timeData.get(i) - previousTime - timeSkip) < Math.abs(timeData.get(i + 1) - previousTime - timeSkip)) {
-					writeDataPointString(data, i, sb);
-					previousTime = timeData.get(i);
-				}
-			} else {
-				// If time data is not available, write all points
-				writeDataPointString(data, i, sb);
+		// Write series entries and put data into container
+		//List<Double> timeData = branch.get(FlightDataType.TYPE_TIME);
+		for (FlightDataType type : branch.getTypes()){
+			
+			
+			// Convert the data into byte array
+			List<Double> d = branch.get(type); 
+			
+			// Write as binary floats
+			/*
+			ByteBuffer buf = ByteBuffer.allocate(4*d.size());
+			for (double val : d) {
+				buf.putFloat((float) val);
 			}
-		}
-		
-		if (length > 1) {
-			writeDataPointString(data, length - 1, sb);
+			byte[] bytes = buf.array();
+			*/
+			
+			// Write as text
+			String textdata = "";
+			int length = branch.getLength();
+			
+			// Make sure to write the first one
+			if (length > 0) { 
+				textdata += TextUtil.doubleToString(d.get(0)) + "\n";
+				previousTime = timeData.get(0);
+			}
+			
+			// Write data point
+			for (int i = 1; i < length - 1; i++) {
+				if (timeData != null) {
+					if (Math.abs(timeData.get(i) - previousTime - timeSkip) < Math.abs(timeData.get(i + 1) - previousTime - timeSkip)) {
+						textdata += TextUtil.doubleToString(d.get(i)) + "\n";
+						previousTime = timeData.get(i);
+					}
+				} else {
+					// If time data is not available, write all points
+					textdata += TextUtil.doubleToString(d.get(i)) + "\n";
+				}				
+			}
+			
+			// Final point
+			if (length > 1) {
+				textdata += TextUtil.doubleToString(d.get(length - 1)) + "\n";
+			}
+			
+			byte[] bytes = textdata.getBytes("US-ASCII");
+			
+			// write into zip
+			String filename = "flightdata/"+simulation.getName()+"/"+branch.getBranchName()+"/"+type.getSymbol();
+			filename = escapeXML(filename).replace(" ", "_");
+			//log.debug("Writing "+d.size()+" points in "+filename);
+			
+			container.addFile(filename, bytes);
+			
+			// write XML entry
+			writeln("<series symbol=\""+type.getSymbol()+"\" data=\""+filename+"\"/>" );
 		}
 		
 		indent--;
@@ -581,22 +572,6 @@ public class OpenRocketSaver extends RocketSaver {
 	}
 	
 	
-	
-	private void writeDataPointString(List<List<Double>> data, int index, StringBuilder sb)
-			throws IOException {
-		sb.setLength(0);
-		sb.append("<datapoint>");
-		for (int j = 0; j < data.size(); j++) {
-			if (j > 0)
-				sb.append(",");
-			sb.append(TextUtil.doubleToString(data.get(j).get(index)));
-		}
-		sb.append("</datapoint>");
-		writeln(sb.toString());
-	}
-	
-	
-	
 	private void writeElement(String element, Object content) throws IOException {
 		if (content == null)
 			content = "";
@@ -607,14 +582,14 @@ public class OpenRocketSaver extends RocketSaver {
 	
 	private void writeln(String str) throws IOException {
 		if (str.length() == 0) {
-			dest.write("\n");
+			container.write("\n");
 			return;
 		}
 		String s = "";
 		for (int i = 0; i < indent; i++)
 			s = s + "  ";
 		s = s + str + "\n";
-		dest.write(s);
+		container.write(s);
 	}
 	
 	

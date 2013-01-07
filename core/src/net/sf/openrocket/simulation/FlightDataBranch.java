@@ -44,18 +44,16 @@ public class FlightDataBranch implements Monitorable {
 	private int modID = 0;
 	
 	/**
-	 * Sole constructor.  Defines the name of the FlightDataBranch and at least one variable type.
+	 * Sole constructor.  Defines the name of the FlightDataBranch.
 	 * 
 	 * @param name		the name of this FlightDataBranch.
 	 * @param types		data types to include (must include at least one type).
 	 */
 	public FlightDataBranch(String name, FlightDataType... types) {
-		if (types.length == 0) {
-			throw new IllegalArgumentException("Must specify at least one data type.");
-		}
 		
 		this.branchName = name;
 		
+		if (types.length == 0) return;
 		for (FlightDataType t : types) {
 			if (values.containsKey(t)) {
 				throw new IllegalArgumentException("Value type " + t + " specified multiple " +
@@ -134,6 +132,25 @@ public class FlightDataBranch implements Monitorable {
 		modID++;
 	}
 	
+	/**
+	 * Sets all the values for a given datatype from a given list of doubles
+	 */
+	public void setAllValues(FlightDataType type, List<Double> allValues) {
+		mutable.check();
+		
+		values.put(type, new ArrayList<Double>(allValues) );
+		
+		double min = Double.POSITIVE_INFINITY;
+		double max = Double.NEGATIVE_INFINITY;
+		for (double v : allValues) {
+			if (v < min) { min = v; };
+			if (v > max) { max = v; };
+		}
+		minValues.put(type, min);
+		maxValues.put(type, max);
+		
+		modID++;
+	}
 	
 	/**
 	 * Return the branch name.

@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipFile;
 
 import net.sf.openrocket.aerodynamics.Warning;
 import net.sf.openrocket.aerodynamics.WarningSet;
@@ -19,6 +20,7 @@ import net.sf.openrocket.document.Simulation;
 import net.sf.openrocket.document.Simulation.Status;
 import net.sf.openrocket.document.StorageOptions;
 import net.sf.openrocket.file.AbstractRocketLoader;
+import net.sf.openrocket.file.ContainerResource;
 import net.sf.openrocket.file.MotorFinder;
 import net.sf.openrocket.file.RocketLoadException;
 import net.sf.openrocket.file.simplesax.AbstractElementHandler;
@@ -102,15 +104,15 @@ public class OpenRocketLoader extends AbstractRocketLoader {
 	
 	
 	@Override
-	public OpenRocketDocument loadFromStream(InputStream source, MotorFinder motorFinder) throws RocketLoadException,
+	public OpenRocketDocument loadFromStream(InputStream source, ZipFile container, MotorFinder motorFinder) throws RocketLoadException,
 			IOException {
 		log.info("Loading .ork file");
 		DocumentLoadingContext context = new DocumentLoadingContext();
+		context.setContainer(container);
 		context.setMotorFinder(motorFinder);
 		
 		InputSource xmlSource = new InputSource(source);
 		OpenRocketHandler handler = new OpenRocketHandler(context);
-		
 		
 		try {
 			SimpleSAX.readXML(xmlSource, handler, warnings);
@@ -151,7 +153,6 @@ public class OpenRocketLoader extends AbstractRocketLoader {
 		timeSkip = Math.rint(timeSkip * 100) / 100;
 		
 		doc.getDefaultStorageOptions().setSimulationTimeSkip(timeSkip);
-		doc.getDefaultStorageOptions().setCompressionEnabled(false); // Set by caller if compressed
 		doc.getDefaultStorageOptions().setExplicitlySet(false);
 		
 		doc.clearUndo();
@@ -1598,12 +1599,11 @@ class FlightDataHandler extends AbstractElementHandler {
 			return PlainTextHandler.INSTANCE;
 		}
 		if (element.equals("databranch")) {
-			if (attributes.get("name") == null || attributes.get("types") == null) {
+			if (attributes.get("name") == null) {
 				warnings.add("Illegal flight data definition, ignoring.");
 				return null;
 			}
 			dataHandler = new FlightDataBranchHandler(attributes.get("name"),
-					attributes.get("types"),
 					simHandler, context);
 			return dataHandler;
 		}
@@ -1698,60 +1698,39 @@ class FlightDataHandler extends AbstractElementHandler {
 class FlightDataBranchHandler extends AbstractElementHandler {
 	@SuppressWarnings("unused")
 	private final DocumentLoadingContext context;
-	private final FlightDataType[] types;
+	//private final FlightDataType[] types;
 	private final FlightDataBranch branch;
 	
 	private static final LogHelper log = Application.getLogger();
 	private final SingleSimulationHandler simHandler;
 	
-	public FlightDataBranchHandler(String name, String typeList, SingleSimulationHandler simHandler, DocumentLoadingContext context) {
+	public FlightDataBranchHandler(String name, SingleSimulationHandler simHandler, DocumentLoadingContext context) {
 		this.simHandler = simHandler;
 		this.context = context;
-		String[] split = typeList.split(",");
-		types = new FlightDataType[split.length];
-		for (int i = 0; i < split.length; i++) {
-			String typeName = split[i];
-			FlightDataType matching = findFlightDataType(typeName);
-			types[i] = matching;
-			//types[i] = FlightDataType.getType(typeName, matching.getSymbol(), matching.getUnitGroup());
-		}
-		
-		// TODO: LOW: May throw an IllegalArgumentException
-		branch = new FlightDataBranch(name, types);
+		this.branch = new FlightDataBranch(name);		
 	}
 	
-	// Find the full flight data type given name only
+	// Find the flightDataType given the symbol only
 	// Note: this way of doing it requires that custom expressions always come before flight data in the file,
 	// not the nicest but this is always the case anyway.
-	private FlightDataType findFlightDataType(String name) {
-		
-		// Kevins version with lookup by key. Not using right now
-		/*
-		if ( key != null ) {
-			for (FlightDataType t : FlightDataType.ALL_TYPES){
-				if (t.getKey().equals(key) ){
-					return t;
-				}
-			}
-		}
-		*/
+	private FlightDataType findFlightDataType(String symbol) {
 		
 		// Look in built in types
 		for (FlightDataType t : FlightDataType.ALL_TYPES) {
-			if (t.getName().equals(name)) {
+			if (t.getSymbol().equals(symbol)) {
 				return t;
 			}
 		}
 		
 		// Look in custom expressions
 		for (CustomExpression exp : simHandler.getDocument().getCustomExpressions()) {
-			if (exp.getName().equals(name)) {
+			if (exp.getSymbol().equals(symbol)) {
 				return exp.getType();
 			}
 		}
 		
-		log.warn("Could not find the flight data type '" + name + "' used in the XML file. Substituted type with unknown symbol and units.");
-		return FlightDataType.getType(name, "Unknown", UnitGroup.UNITS_NONE);
+		log.warn("Could not find the flight data type '" + symbol + "' used in the XML file. Substituted type with unknown symbol and units.");
+		return FlightDataType.getType("Unknown", symbol, UnitGroup.UNITS_NONE);
 	}
 	
 	public FlightDataBranch getBranch() {
@@ -1763,10 +1742,14 @@ class FlightDataBranchHandler extends AbstractElementHandler {
 	public ElementHandler openElement(String element, HashMap<String, String> attributes,
 			WarningSet warnings) {
 		
-		if (element.equals("datapoint"))
+		if (element.equals("series"))
 			return PlainTextHandler.INSTANCE;
 		if (element.equals("event"))
 			return PlainTextHandler.INSTANCE;
+		if (element.equals("datapoint")) {		
+			warnings.add("Simulation data saved with an earlier version of OpenRocket is not available. Please re-run your simulations.");
+			return PlainTextHandler.INSTANCE;
+		}
 		
 		warnings.add("Unknown element '" + element + "' encountered, ignoring.");
 		return null;
@@ -1798,36 +1781,19 @@ class FlightDataBranchHandler extends AbstractElementHandler {
 			return;
 		}
 		
-		if (!element.equals("datapoint")) {
-			warnings.add("Unknown element '" + element + "' encountered, ignoring.");
-			return;
-		}
-		
-		// element == "datapoint"
-		
-		
-		// Check line format
-		String[] split = content.split(",");
-		if (split.length != types.length) {
-			warnings.add("Data point did not contain correct amount of values, ignoring point.");
-			return;
-		}
-		
-		// Parse the doubles
-		double[] values = new double[split.length];
-		for (int i = 0; i < values.length; i++) {
+		// load data series from contained file
+		if (element.equals("series")) {
+			FlightDataType type = findFlightDataType( attributes.get("symbol") );
 			try {
-				values[i] = DocumentConfig.stringToDouble(split[i]);
-			} catch (NumberFormatException e) {
-				warnings.add("Data point format error, ignoring point.");
-				return;
+				ContainerResource resource = new ContainerResource( context.getContainer(), attributes.get("data") );
+				List<Double> values = resource.getDblArray1D();
+				branch.setAllValues(type, values);
+				log.debug("Loaded "+values.size()+" values from file for "+attributes.get("symbol")+" ("+type.getName()+")");
 			}
-		}
-		
-		// Add point to branch
-		branch.addPoint();
-		for (int i = 0; i < types.length; i++) {
-			branch.setValue(types[i], values[i]);
+			catch (IOException e) {
+				warnings.add("Could not find data for series "+attributes.get("symbol"));
+			}
+			return;
 		}
 	}
 }

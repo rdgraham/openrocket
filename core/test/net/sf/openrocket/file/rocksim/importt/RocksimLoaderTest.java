@@ -34,7 +34,7 @@ public class RocksimLoaderTest {
 		InputStream stream = this.getClass().getResourceAsStream("PodFins.rkt");
 		Assert.assertNotNull("Could not open PodFins.rkt", stream);
 		try {
-			OpenRocketDocument doc = loader.loadFromStream(new BufferedInputStream(stream), new DatabaseMotorFinder());
+			OpenRocketDocument doc = loader.loadFromStream(new BufferedInputStream(stream), null, new DatabaseMotorFinder());
 			Assert.assertNotNull(doc);
 			Rocket rocket = doc.getRocket();
 			Assert.assertNotNull(rocket);
@@ -64,7 +64,7 @@ public class RocksimLoaderTest {
 		
 		stream = this.getClass().getResourceAsStream("rocksimTestRocket2.rkt");
 		Assert.assertNotNull("Could not open rocksimTestRocket2.rkt", stream);
-		doc = loader.loadFromStream(new BufferedInputStream(stream), new DatabaseMotorFinder());
+		doc = loader.loadFromStream(new BufferedInputStream(stream), null, new DatabaseMotorFinder());
 		
 		Assert.assertNotNull(doc);
 		rocket = doc.getRocket();
@@ -87,7 +87,7 @@ public class RocksimLoaderTest {
 		
 		stream = this.getClass().getResourceAsStream("rocksimTestRocket3.rkt");
 		Assert.assertNotNull("Could not open rocksimTestRocket3.rkt", stream);
-		doc = loader.loadFromStream(new BufferedInputStream(stream), new DatabaseMotorFinder());
+		doc = loader.loadFromStream(new BufferedInputStream(stream), null, new DatabaseMotorFinder());
 		
 		Assert.assertNotNull(doc);
 		rocket = doc.getRocket();
@@ -133,7 +133,7 @@ public class RocksimLoaderTest {
 		InputStream stream = RocksimLoaderTest.class.getResourceAsStream("rocksimTestRocket1.rkt");
 		try {
 			Assert.assertNotNull("Could not open rocksimTestRocket1.rkt", stream);
-			return theLoader.loadFromStream(new BufferedInputStream(stream), new DatabaseMotorFinder());
+			return theLoader.loadFromStream(new BufferedInputStream(stream), null, new DatabaseMotorFinder());
 		} finally {
 			stream.close();
 		}
@@ -143,7 +143,7 @@ public class RocksimLoaderTest {
 		InputStream stream = RocksimLoaderTest.class.getResourceAsStream("rocksimTestRocket3.rkt");
 		try {
 			Assert.assertNotNull("Could not open rocksimTestRocket3.rkt", stream);
-			return theLoader.loadFromStream(new BufferedInputStream(stream), new DatabaseMotorFinder());
+			return theLoader.loadFromStream(new BufferedInputStream(stream), null, new DatabaseMotorFinder());
 		} finally {
 			stream.close();
 		}

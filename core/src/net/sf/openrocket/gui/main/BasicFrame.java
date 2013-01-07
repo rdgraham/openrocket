@@ -14,8 +14,10 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -26,6 +28,7 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.zip.ZipFile;
 
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -1118,14 +1121,37 @@ public class BasicFrame extends JFrame {
 		log.info("Opening file from url=" + url + " filename=" + filename);
 		try {
 			InputStream is = url.openStream();
-			open(is, filename, parent);
+			//open(is, filename, parent);
+			
+			// write the inputStream to a FileOutputStream
+			
+			// Note: we have to use a temp file because ZipFile can't work with a stream. Since this method
+			// only seems to be used for opening urls of the form file:/... this could probably work
+			// with just files and avoid streams, still this seems to work ok.
+			
+			File tempfile = File.createTempFile("openrocket-temp-", ".ork");
+			OutputStream out = new FileOutputStream(tempfile);
+			
+			int read = 0;
+			byte[] bytes = new byte[1024];
+			while ((read = is.read(bytes)) != -1) {
+				out.write(bytes, 0, read);
+			}
+		 
+			is.close();
+			out.flush();
+			out.close();
+			
+			open(tempfile, parent);
+			tempfile.delete();
+			return true;
+			
 		} catch (IOException e) {
 			log.warn("Error opening file" + e);
 			JOptionPane.showMessageDialog(parent,
 					"An error occurred while opening the file " + filename,
 					"Error loading file", JOptionPane.ERROR_MESSAGE);
 		}
-		
 		return false;
 	}
 	
@@ -1135,19 +1161,21 @@ public class BasicFrame extends JFrame {
 	 * occurs, an error dialog is shown and <code>false</code> is returned.
 	 *
 	 * @param stream	the stream to load from.
+	 * @param container the zip container file, if loading from one. Otherwise null.
 	 * @param filename	the file name to display in dialogs (not set to the document).
 	 * @param parent	the parent component for which a progress dialog is opened.
 	 * @return			whether the file was successfully loaded and opened.
 	 */
-	private static boolean open(InputStream stream, String filename, Window parent) {
-		OpenFileWorker worker = new OpenFileWorker(stream, ROCKET_LOADER);
+	private static boolean open(InputStream stream, ZipFile container, String filename, Window parent) {
+		OpenFileWorker worker = new OpenFileWorker(stream, container, ROCKET_LOADER);
 		return open(worker, filename, null, parent);
 	}
 	
 	
 	/**
 	 * Open the specified file in a new design frame.  If an error occurs, an error
-	 * dialog is shown and <code>false</code> is returned.
+	 * dialog is shown and <code>false</code> is returned. File name for display is
+	 * determined from the file.
 	 *
 	 * @param file		the file to open.
 	 * @param parent	the parent component for which a progress dialog is opened.
@@ -1178,6 +1206,10 @@ public class BasicFrame extends JFrame {
 			return false;
 		}
 		
+		if (file.getName().startsWith("openrocket-temp")) {
+			// file considered unnamed if opened from a temporary location
+			file = null;
+		}
 		
 		// Handle the document
 		OpenRocketDocument doc = null;

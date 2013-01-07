@@ -114,7 +114,7 @@ public class IntegrationTest extends BaseTestCase {
 		GeneralRocketLoader loader = new GeneralRocketLoader();
 		InputStream is = this.getClass().getResourceAsStream("simplerocket.ork");
 		assertNotNull("Problem in unit test, cannot find simplerocket.ork", is);
-		document = loader.load(is, new DatabaseMotorFinder());
+		document = loader.load(is, null, new DatabaseMotorFinder());
 		is.close();
 		
 		undoAction = UndoRedoAction.newUndoAction(document);

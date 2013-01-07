@@ -7,6 +7,7 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.util.zip.ZipFile;
 
 import javax.swing.SwingWorker;
 
@@ -29,24 +30,33 @@ public class OpenFileWorker extends SwingWorker<OpenRocketDocument, Void> {
 	private final File file;
 	private final InputStream stream;
 	private final RocketLoader loader;
+	private final ZipFile container;
 	
 	public OpenFileWorker(File file, RocketLoader loader) {
 		this.file = file;
 		this.stream = null;
 		this.loader = loader;
+		
+		ZipFile container = null;
+		try {
+			container = new ZipFile(file); 
+		} catch (Exception e) {}
+		this.container = container;
 	}
 	
 	
-	public OpenFileWorker(InputStream stream, RocketLoader loader) {
+	public OpenFileWorker(InputStream stream, ZipFile container, RocketLoader loader) {
 		this.stream = stream;
 		this.file = null;
 		this.loader = loader;
+		this.container = container;
 	}
 	
 	public RocketLoader getRocketLoader() {
 		return loader;
 	}
 	
+	@SuppressWarnings("resource")
 	@Override
 	protected OpenRocketDocument doInBackground() throws Exception {
 		InputStream is;
@@ -67,7 +77,7 @@ public class OpenFileWorker extends SwingWorker<OpenRocketDocument, Void> {
 		is = new ProgressInputStream(is);
 		
 		try {
-			return loader.load(is, new DatabaseMotorFinder());
+			return loader.load(is, container, new DatabaseMotorFinder());
 		} finally {
 			try {
 				is.close();

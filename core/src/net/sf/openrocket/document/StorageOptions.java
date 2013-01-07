@@ -6,21 +6,10 @@ public class StorageOptions implements Cloneable {
 	
 	public static final double SIMULATION_DATA_NONE = Double.POSITIVE_INFINITY;
 	public static final double SIMULATION_DATA_ALL = 0;
-	
-	private boolean compressionEnabled = true;
-	
+		
 	private double simulationTimeSkip = SIMULATION_DATA_NONE;
 
 	private boolean explicitlySet = false;
-	
-
-	public boolean isCompressionEnabled() {
-		return compressionEnabled;
-	}
-
-	public void setCompressionEnabled(boolean compression) {
-		this.compressionEnabled = compression;
-	}
 
 	public double getSimulationTimeSkip() {
 		return simulationTimeSkip;

@@ -7,6 +7,7 @@ import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 
 import net.sf.openrocket.document.OpenRocketDocument;
@@ -37,7 +38,7 @@ public class GeneralRocketLoader extends AbstractRocketLoader {
 	private final RocksimLoader rocksimLoader = new RocksimLoader();
 	
 	@Override
-	protected OpenRocketDocument loadFromStream(InputStream source, MotorFinder motorFinder) throws IOException,
+	protected OpenRocketDocument loadFromStream(InputStream source, ZipFile container, MotorFinder motorFinder) throws IOException,
 			RocketLoadException {
 		
 		// Check for mark() support
@@ -60,12 +61,11 @@ public class GeneralRocketLoader extends AbstractRocketLoader {
 		
 		// Check for GZIP
 		if (buffer[0] == GZIP_SIGNATURE[0] && buffer[1] == GZIP_SIGNATURE[1]) {
-			OpenRocketDocument doc = loadFromStream(new GZIPInputStream(source), motorFinder);
-			doc.getDefaultStorageOptions().setCompressionEnabled(true);
+			OpenRocketDocument doc = loadFromStream(new GZIPInputStream(source), null, motorFinder);
 			return doc;
 		}
 		
-		// Check for ZIP (for future compatibility)
+		// Check for ZIP container
 		if (buffer[0] == ZIP_SIGNATURE[0] && buffer[1] == ZIP_SIGNATURE[1]) {
 			// Search for entry with name *.ork
 			ZipInputStream in = new ZipInputStream(source);
@@ -75,40 +75,42 @@ public class GeneralRocketLoader extends AbstractRocketLoader {
 					throw new RocketLoadException("Unsupported or corrupt file.");
 				}
 				if (entry.getName().matches(".*\\.[oO][rR][kK]$")) {
-					OpenRocketDocument doc = loadFromStream(in, motorFinder);
-					doc.getDefaultStorageOptions().setCompressionEnabled(true);
+					OpenRocketDocument doc = loadFromStream(in, container, motorFinder);
+					in.close();
 					return doc;
 				} else if ( entry.getName().matches(".*\\.[rR][kK][tT]$")) {
-					OpenRocketDocument doc = loadFromStream(in, motorFinder);
+					OpenRocketDocument doc = loadFromStream(in, container, motorFinder);
+					in.close();
 					return doc;
 				}
 			}
 		}
 		
-		// Check for OpenRocket
+		// Check for OpenRocket (individual .ork file)
 		int match = 0;
 		for (int i = 0; i < count; i++) {
 			if (buffer[i] == OPENROCKET_SIGNATURE[match]) {
 				match++;
 				if (match == OPENROCKET_SIGNATURE.length) {
-					return loadUsing(source, openRocketLoader, motorFinder);
+					return loadUsing(source, container, openRocketLoader, motorFinder);
 				}
 			} else {
 				match = 0;
 			}
 		}
 		
+		// Check for RockSim file
 		byte[] typeIdentifier = ArrayUtils.copyOf(buffer, ROCKSIM_SIGNATURE.length);
 		if (Arrays.equals(ROCKSIM_SIGNATURE, typeIdentifier)) {
-			return loadUsing(source, rocksimLoader, motorFinder);
+			return loadUsing(source, null, rocksimLoader, motorFinder);
 		}
 		throw new RocketLoadException("Unsupported or corrupt file.");
 	}
 	
-	private OpenRocketDocument loadUsing(InputStream source, RocketLoader loader, MotorFinder motorFinder)
+	private OpenRocketDocument loadUsing(InputStream source, ZipFile container, RocketLoader loader, MotorFinder motorFinder)
 			throws RocketLoadException {
 		warnings.clear();
-		OpenRocketDocument doc = loader.load(source, motorFinder);
+		OpenRocketDocument doc = loader.load(source, container, motorFinder);
 		warnings.addAll(loader.getWarnings());
 		return doc;
 	}

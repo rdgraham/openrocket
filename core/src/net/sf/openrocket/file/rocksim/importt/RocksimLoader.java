@@ -3,8 +3,10 @@
  */
 package net.sf.openrocket.file.rocksim.importt;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.zip.ZipFile;
 
 import net.sf.openrocket.document.OpenRocketDocument;
 import net.sf.openrocket.file.AbstractRocketLoader;
@@ -39,7 +41,7 @@ public class RocksimLoader extends AbstractRocketLoader {
 	 *          if an error occurs during loading.
 	 */
 	@Override
-	protected OpenRocketDocument loadFromStream(InputStream source, MotorFinder motorFinder) throws IOException, RocketLoadException {
+	protected OpenRocketDocument loadFromStream(InputStream source, ZipFile container, MotorFinder motorFinder) throws IOException, RocketLoadException {
 		
 		InputSource xmlSource = new InputSource(source);
 		

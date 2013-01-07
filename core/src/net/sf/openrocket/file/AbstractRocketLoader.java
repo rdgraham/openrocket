@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.zip.ZipFile;
 
 import net.sf.openrocket.aerodynamics.WarningSet;
 import net.sf.openrocket.document.OpenRocketDocument;
@@ -26,7 +27,12 @@ public abstract class AbstractRocketLoader implements RocketLoader {
 		try {
 			
 			stream = new BufferedInputStream(new FileInputStream(source));
-			return load(stream, motorFinder);
+			
+			ZipFile container = null;
+			try { 
+				container = new ZipFile(source);
+			} catch (Exception e) { }			
+			return load(stream, container, motorFinder);
 			
 		} catch (FileNotFoundException e) {
 			throw new RocketLoadException("File not found: " + source);
@@ -45,11 +51,11 @@ public abstract class AbstractRocketLoader implements RocketLoader {
 	 * Loads a rocket from the specified InputStream.
 	 */
 	@Override
-	public final OpenRocketDocument load(InputStream source, MotorFinder motorFinder) throws RocketLoadException {
+	public final OpenRocketDocument load(InputStream source, ZipFile container, MotorFinder motorFinder) throws RocketLoadException {
 		warnings.clear();
 		
 		try {
-			return loadFromStream(source, motorFinder);
+			return loadFromStream(source, container, motorFinder);
 		} catch (RocketLoadException e) {
 			throw e;
 		} catch (IOException e) {
@@ -65,7 +71,7 @@ public abstract class AbstractRocketLoader implements RocketLoader {
 	 * 
 	 * @throws RocketLoadException	if an error occurs during loading.
 	 */
-	protected abstract OpenRocketDocument loadFromStream(InputStream source, MotorFinder motorFinder) throws IOException,
+	protected abstract OpenRocketDocument loadFromStream(InputStream source, ZipFile container, MotorFinder motorFinder) throws IOException,
 			RocketLoadException;
 	
 	
@@ -74,4 +80,5 @@ public abstract class AbstractRocketLoader implements RocketLoader {
 	public final WarningSet getWarnings() {
 		return warnings;
 	}
+
 }

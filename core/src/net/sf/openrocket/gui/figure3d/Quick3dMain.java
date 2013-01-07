@@ -54,6 +54,7 @@ public class Quick3dMain {
 		
 		OpenRocketDocument doc = new OpenRocketLoader().loadFromStream(
 				Quick3dMain.class.getResourceAsStream("/datafiles/examples/Clustered rocket design.ork"),
+				null,
 				new DatabaseMotorFinder());
 		
 		JFrame ff = new JFrame();
